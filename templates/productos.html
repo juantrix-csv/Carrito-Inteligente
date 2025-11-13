@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <h1>Productos</h1>
+
+    <ul>
+        {% for p in productos %}
+        <li>{{ p.id }} — {{ p.nombre }}</li>
+        {% endfor %}
+    </ul>
+</body>
+</html>

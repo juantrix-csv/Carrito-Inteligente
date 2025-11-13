@@ -61,6 +61,9 @@ DOWNLOAD_DELAY = 1
 #ITEM_PIPELINES = {
 #    "precios_super.pipelines.PreciosSuperPipeline": 300,
 #}
+ITEM_PIPELINES = {
+    'precios_super.pipelines.DBPipeline': 300,
+}
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html
