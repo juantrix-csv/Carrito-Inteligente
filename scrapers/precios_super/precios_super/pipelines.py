@@ -26,46 +26,49 @@ class DBPipeline:
             )
             db.session.add(self.supermercado)
             db.session.commit()
+        print(f"Usando supermercado: {self.supermercado.nombre} (ID: {self.supermercado.id})")
 
     def process_item(self, item, spider):
+        with self.app.app_context():
+            # 1) Crear o buscar Producto
+            producto = Producto.query.filter_by(nombre=item["nombre"]).first()
+            if not producto:
+                producto = Producto(nombre=item["nombre"])
+                db.session.add(producto)
+                db.session.flush()
+            print(f"Procesando producto: {producto.nombre} (ID: {producto.id})")
 
-        # 1) Crear o buscar Producto
-        producto = Producto.query.filter_by(nombre=item["nombre"]).first()
-        if not producto:
-            producto = Producto(nombre=item["nombre"])
-            db.session.add(producto)
-            db.session.flush()
-
-        # 2) Crear o buscar ProductoSupermercado
-        prod_super = ProductoSupermercado.query.filter_by(
-            producto_id=producto.id,
-            supermercado_id=self.supermercado.id
-        ).first()
-
-        if not prod_super:
-            prod_super = ProductoSupermercado(
+            # 2) Crear o buscar ProductoSupermercado
+            prod_super = ProductoSupermercado.query.filter_by(
                 producto_id=producto.id,
-                supermercado_id=self.supermercado.id,
-                nombre_externo=item.get("nombre"),
-                codigo_externo=item.get("product_id"),
-                url=item.get("url"),
-                marca=item.get("marca"),
-                cantidad=item.get("multiplicador")
-            )
-            db.session.add(prod_super)
-            db.session.flush()
+                supermercado_id=self.supermercado.id
+            ).first()
 
-        # 3) Insertar precio del día
-        precio = item.get("precio")
-        if precio is not None:
-            precio_row = PrecioProducto(
-                producto_supermercado_id=prod_super.id,
-                precio=float(precio),
-                moneda="ARS",
-                fecha=date.today(),
-            )
-            db.session.add(precio_row)
+            if not prod_super:
+                prod_super = ProductoSupermercado(
+                    producto_id=producto.id,
+                    supermercado_id=self.supermercado.id,
+                    nombre_externo=item.get("nombre"),
+                    codigo_externo=item.get("product_id"),
+                    url=item.get("url"),
+                    marca=item.get("marca"),
+                    cantidad=item.get("multiplicador")
+                )
+                db.session.add(prod_super)
+                db.session.flush()
+            print(f"ProductoSupermercado ID: {prod_super.id} para producto ID: {producto.id}")
 
-        db.session.commit()
+            # 3) Insertar precio del día
+            precio = item.get("precio")
+            if precio is not None:
+                precio_row = PrecioProducto(
+                    producto_supermercado_id=prod_super.id,
+                    precio=float(precio),
+                    moneda="ARS",
+                    fecha=date.today(),
+                )
+                db.session.add(precio_row)
 
+            db.session.commit()
+            print(f"Precio registrado: {precio} para ProductoSupermercado ID: {prod_super.id} en {date.today()}")
         return item
