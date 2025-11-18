@@ -1,0 +1,97 @@
+<!-- templates/partials/lista_activa.html -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center bg-primary text-white">
+        <h4 class="mb-0">{{ lista_activa.nombre }}</h4>
+        <small>Creada: {{ lista_activa.fecha_creacion.strftime('%d/%m/%Y') }}</small>
+    </div>
+    
+    <div class="card-body">
+        <!-- Formulario de búsqueda y añadir producto -->
+        <form hx-post="{{ url_for('agregar_item', lista_id=lista_activa.id) }}"
+            hx-target="#items-lista" 
+            hx-swap="innerHTML"
+            hx-on::after-request="
+                document.getElementById('nombre_display').innerHTML = '';
+                document.getElementById('cantidad').value = 1;">  
+                    
+            <div class="row g-3 align-items-end mb-3">
+                <div class="col-lg-6 position-relative">
+                    <input type="text" 
+                           name="query" 
+                           class="form-control form-control-lg" 
+                           placeholder="Buscar producto..." 
+                           autocomplete="off"
+                           hx-get="{{ url_for('buscar_productos') }}"
+                           hx-trigger="keyup changed delay:300ms"
+                           hx-target="next .autocomplete-suggestions"
+                           hx-swap="innerHTML">
+                    
+                    <!-- Aquí se inyectan las sugerencias -->
+                    <div class="autocomplete-suggestions position-absolute top-100 start-0 w-100 z-3"></div>
+                </div>
+
+                <div class="col-lg-2 col-4">
+                    <input type="number" 
+                           name="cantidad" 
+                           id="cantidad" 
+                           class="form-control" 
+                           value="1" 
+                           min="1" 
+                           step="1">
+                </div>
+
+                <div class="col-lg-4 col-8">
+                    <button type="submit" class="btn btn-success w-100">
+                        Añadir a la lista
+                    </button>
+                    <input type="hidden" name="producto_id" id="producto_id">
+                </div>
+            </div>
+
+            <!-- Muestra el producto seleccionado -->
+            <div id="nombre_display" class="mt-2 fw-bold text-primary"></div>
+        </form>
+    </div>
+
+    <!-- Lista de items (se actualiza con htmx) -->
+    <div id="items-lista">
+        {% include "partials/items_lista.html" %}
+    </div>
+</div>
+
+<!-- Función JavaScript GLOBAL (infalible con htmx) -->
+<script>
+    // Usamos window. para que htmx nunca la pierda
+    window.seleccionarProducto = function(id, nombre, precio, supermercado) {
+        console.log("Seleccionado:", {id, nombre, precio, supermercado});
+
+        // Rellenar ID oculto
+        const inputId = document.getElementById('producto_id');
+        if (inputId) inputId.value = id;
+
+        // Mostrar producto seleccionado
+        const display = document.getElementById('nombre_display');
+        if (display) {
+            if (precio && precio > 0) {
+                display.innerHTML = `
+                    <strong>${nombre}</strong> → 
+                    <span class="text-success fw-bold">$${parseFloat(precio).toFixed(2)}</span> 
+                    en <em>${supermercado}</em>
+                `;
+            } else {
+                display.innerHTML = `<strong>${nombre}</strong> <span class="text-muted">(sin precio)</span>`;
+            }
+        }
+
+        // Cerrar sugerencias
+        const suggestions = document.querySelector('.autocomplete-suggestions');
+        if (suggestions) suggestions.innerHTML = '';
+
+        // Foco en cantidad
+        const cantidad = document.getElementById('cantidad');
+        if (cantidad) {
+            cantidad.focus();
+            cantidad.select();
+        }
+    };
+</script>

@@ -1,0 +1,27 @@
+{% if items %}
+<ul class="list-group list-group-flush">
+    {% for item in items %}
+    <li class="list-group-item d-flex justify-content-between align-items-center">
+        <div>
+            <strong>{{ item.producto.nombre }}</strong> × {{ item.cantidad }}
+            {% if item.mejor_precio %}
+                <span class="text-success ms-3">
+                    → ${{ "%.2f"|format(item.mejor_precio.precio) }} en <em>{{ item.mejor_precio.supermercado.nombre }}</em>
+                </span>
+            {% endif %}
+        </div>
+        <a href="{{ url_for('quitar_item', item_id=item.id) }}"
+           hx-post="{{ url_for('quitar_item', item_id=item.id) }}"
+           hx-target="#items-lista" hx-swap="innerHTML"
+           class="text-danger">Eliminar</a>
+    </li>
+    {% endfor %}
+</ul>
+<div class="p-3 bg-light border-top text-end">
+    <strong>Total estimado: ${{ "%.2f"|format(total_estimado) }}</strong>
+</div>
+{% else %}
+<div class="text-center text-muted py-5">
+    No hay productos aún. ¡Empieza a buscar!
+</div>
+{% endif %}
