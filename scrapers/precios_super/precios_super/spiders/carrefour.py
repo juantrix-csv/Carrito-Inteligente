@@ -63,8 +63,10 @@ class CarrefourCategoriasSpider(scrapy.Spider):
                 "ean": ean,
                 "url": url_producto,
                 "imagen": imagen_url,
+                "supermercado_nombre": "Carrefour",
+                "supermercado_url": "https://www.carrefour.com.ar/",
+                "supermercado_ciudad": ""
             }
-
             productos.append(producto_info)
 
         return productos
