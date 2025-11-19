@@ -1,15 +1,65 @@
+from models import *
 
+def armar_listado_supermercados(lista_id):
+    lista = ListaCompra.query.get(lista_id)
+
+    if not lista:
+        return []
+
+    # Traer los items de esa lista
+    items_lista = ItemListaCompra.query.filter_by(lista_compra_id=lista.id).all()
+
+    # Traer TODOS los supermercados
+    supermercados = Supermercado.query.all()
+
+    resultado = []
+
+    for superm in supermercados:
+        supermercado_dict = {
+            "nombre": superm.nombre,
+            "items": []
+        }
+
+        for item in items_lista:
+            # Buscar el producto en ese supermercado
+            ps = ProductoSupermercado.query.filter_by(
+                supermercado_id=superm.id,
+                producto_id=item.producto_id
+            ).first()
+
+            if not ps:
+                continue
+
+            # Buscar el precio más reciente / más barato
+            precio = (
+                PrecioProducto.query
+                .filter_by(producto_supermercado_id=ps.id)
+                .order_by(PrecioProducto.precio.asc())
+                .first()
+            )
+
+            if precio:
+                supermercado_dict["items"].append({
+                    "nombre": Producto.query.get(item.producto_id).nombre,
+                    "precio": precio.precio * item.cantidad
+                })
+
+        resultado.append(supermercado_dict)
+
+    return resultado
 
 def calcular_super_mas_barato(listado_supermercados):
     """
-    Esta función recibe una lista de diccionarios, donde cada diccionario representa un supermercado
-    con su nombre y la lista de productos. La función devuelve el nombre del supermercado
-    con el precio más bajo en la suma de los productos.
+    Recibe una lista donde cada elemento representa un supermercado y contiene:
+    {
+      "nombre": "Carrefour",
+      "items": [
+          {"nombre": "pan", "precio": 150.0},
+          {"nombre": "huevos", "precio": 350.0}
+      ]
+    }
 
-    :param listado_supermercados: Lista de diccionarios con la estructura:
-                                  [{'nombre': 'Supermercado A', 'item': {'nombre': 'pan', 'precio' : 150.0}},
-                                   {'nombre': 'Supermercado B', 'item': {'nombre': 'huevos', 'precio' : 350.0}}, ...]
-    :return: Nombre del supermercado con el precio más bajo.
+    Devuelve el nombre del supermercado con el total más bajo.
     """
     precios_totales = {}
 
@@ -23,5 +73,4 @@ def calcular_super_mas_barato(listado_supermercados):
     if not precios_totales:
         return None
 
-    super_mas_barato = min(precios_totales, key=precios_totales.get)
-    return super_mas_barato
+    return min(precios_totales, key=precios_totales.get)

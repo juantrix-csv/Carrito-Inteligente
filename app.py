@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
 from extensions import db 
+from utils import armar_listado_supermercados, calcular_super_mas_barato
 import json 
 def create_app():
     
@@ -13,24 +14,81 @@ def create_app():
     db.init_app(app)
     from models import Producto, ListaCompra, PrecioProducto, ProductoSupermercado, Supermercado, ItemListaCompra  # ajustá el import según tu estructura
 
+    def obtener_items_y_total(lista):
+        # Traer ítems de la lista
+        items = ItemListaCompra.query.filter_by(lista_compra_id=lista.id).all()
+        
+        for item in items:
+            # Adjuntar el producto para que el template pueda usar item.producto.nombre
+            item.producto = Producto.query.get(item.producto_id)
+            # Como todavía no estamos manejando precios, lo dejamos explícito
+            item.mejor_precio = None
+
+        # Por ahora no calculamos precios reales
+        total = 0
+
+        return items, total
+
     @app.route('/lista/')
     def lista_compra_home():
         listas = ListaCompra.query.order_by(ListaCompra.fecha_creacion.desc()).all()
+        
         lista_activa = None
+        items = []
+        total = 0
+
         if 'lista_activa_id' in session:
             lista_activa = ListaCompra.query.get(session['lista_activa_id'])
-        return render_template('lista_compra.html', listas=listas, lista_activa=lista_activa)
+            if lista_activa:
+                items, total = obtener_items_y_total(lista_activa)
+
+        return render_template(
+            'lista_compra.html',
+            listas=listas,
+            lista_activa=lista_activa,
+            items=items,
+            total_estimado=total
+        )
+    
+    @app.route('/lista/<int:lista_id>/comparar')
+    def comparar_lista(lista_id):
+        # Obtenemos la lista
+        lista = ListaCompra.query.get_or_404(lista_id)
+
+        # Armamos la estructura con supermercados + items
+        listado = armar_listado_supermercados(lista_id)
+
+        # Calculamos el nombre del super más barato
+        super_mas_barato = calcular_super_mas_barato(listado)
+
+        # IMPORTANTE: pasar lista al template
+        return render_template(
+            "comparar.html",
+            lista=lista,
+            listado=listado,
+            super_mas_barato=super_mas_barato
+        )
 
     @app.route('/lista/crear', methods=['POST'])
     def crear_lista():
         nombre = request.form['nombre'].strip()
         if not nombre:
             return "Nombre requerido", 400
+
         lista = ListaCompra(nombre=nombre)
         db.session.add(lista)
         db.session.commit()
+
         session['lista_activa_id'] = lista.id
-        return render_template('partials/lista_activa.html', lista_activa=lista)
+
+        items, total = obtener_items_y_total(lista)  # va a ser lista vacía
+
+        return render_template(
+            'partials/lista_activa.html',
+            lista_activa=lista,
+            items=items,
+            total_estimado=total
+        )
 
     @app.route('/lista/<int:lista_id>')
     def ver_lista(lista_id):
@@ -44,40 +102,40 @@ def create_app():
         if len(q) < 2:
             return ''
 
-        resultados = db.session.query(
-            Producto, PrecioProducto.precio, Supermercado.nombre
-        ).join(ProductoSupermercado, Producto.id == ProductoSupermercado.producto_id
-        ).join(PrecioProducto, PrecioProducto.producto_supermercado_id == ProductoSupermercado.id
-        ).join(Supermercado, Supermercado.id == ProductoSupermercado.supermercado_id
-        ).filter(Producto.nombre.ilike(f'%{q}%')
-        ).order_by(PrecioProducto.precio.asc()
-        ).limit(10).all()
+        # Buscar SOLO productos genéricos
+        productos = (
+            Producto.query
+            .filter(Producto.nombre.ilike(f'%{q}%'))
+            .order_by(Producto.nombre.asc())
+            .limit(10)
+            .all()
+        )
 
-        if not resultados:
+        if not productos:
             return '<div class="p-3 text-muted">No se encontraron productos</div>'
 
-        html = '<div class="autocomplete-suggestions shadow-lg bg-white rounded border" style="max-height:400px;overflow-y:auto;">'
+        html = '''
+        <div class="autocomplete-suggestions shadow-lg bg-white rounded border"
+            style="max-height:400px;overflow-y:auto;">
+        '''
         
-        for prod, precio, supermercado in resultados:
-            # Todo convertido a JSON válido
+        for prod in productos:
             nombre_js = json.dumps(prod.nombre or "Sin nombre")
-            super_js = json.dumps(supermercado or "Desconocido")
-            precio_js = round(float(precio), 2) if precio else 0
-            
+
+            # precio = 0 y "Genérico" son solo placeholders para tu JS actual
             html += f'''
-            <div class="px-3 py-3 border-bottom" style="cursor:pointer;background:var(--bs-light);"
-                onclick='seleccionarProducto({prod.id}, {nombre_js}, {precio_js}, {super_js})'>
+            <div class="px-3 py-3 border-bottom"
+                style="cursor:pointer;background:var(--bs-light);"
+                onclick='seleccionarProducto({prod.id}, {nombre_js}, 0, "Genérico")'>
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
                         <strong>{prod.nombre}</strong><br>
-                        <small class="text-muted">{supermercado}</small>
-                    </div>
-                    <div class="text-success fw-bold">
-                        ${precio_js if precio_js else "Sin precio"}
+                        <small class="text-muted">Producto genérico</small>
                     </div>
                 </div>
             </div>
             '''
+        
         html += '</div>'
         return html
 
@@ -126,48 +184,34 @@ def create_app():
         return cargar_items(lista)
 
     def cargar_items(lista):
-        # ACA ESTABA EL ERROR: usar lista.id, no lista
-        items = ItemListaCompra.query.filter_by(lista_compra_id=lista.id).all()
-        
-        for item in items:
-            # Adjuntar el producto para que el template pueda usar item.producto.nombre
-            item.producto = Producto.query.get(item.producto_id)
-
-            # Buscar el mejor precio actual para ese producto
-            mejor = (
-                db.session.query(PrecioProducto.precio, Supermercado.nombre)
-                .select_from(ProductoSupermercado)
-                .join(
-                    PrecioProducto,
-                    PrecioProducto.producto_supermercado_id == ProductoSupermercado.id
-                )
-                .join(
-                    Supermercado,
-                    Supermercado.id == ProductoSupermercado.supermercado_id
-                )
-                .filter(ProductoSupermercado.producto_id == item.producto_id)
-                .order_by(PrecioProducto.precio.asc())
-                .first()
-            )
-
-            if mejor:
-                item.mejor_precio = type('obj', (object,), {
-                    'precio': mejor[0],
-                    'supermercado': type('obj', (object,), {'nombre': mejor[1]})
-                })
-            else:
-                item.mejor_precio = None
-
-        # Calcular total estimado de forma segura
-        total = 0
-        for i in items:
-            if getattr(i, 'mejor_precio', None) and i.mejor_precio.precio is not None:
-                total += i.mejor_precio.precio * i.cantidad
-
-        return render_template('partials/items_lista.html', items=items, total_estimado=total)
-
-    return app
+        items, total = obtener_items_y_total(lista)
+        return render_template(
+            'partials/items_lista.html',
+            items=items,
+            total_estimado=total
+        )
     
+    @app.route('/lista/<int:lista_id>/eliminar', methods=['POST'])
+    def eliminar_lista(lista_id):
+        # Buscar la lista
+        lista = ListaCompra.query.get_or_404(lista_id)
+
+        # Borrar primero todos los items de esa lista
+        ItemListaCompra.query.filter_by(lista_compra_id=lista.id).delete()
+
+        # Borrar la lista
+        db.session.delete(lista)
+        db.session.commit()
+
+        # Si era la lista activa, sacarla de la sesión
+        if session.get('lista_activa_id') == lista.id:
+            session.pop('lista_activa_id', None)
+
+        # Volver a la vista principal de listas
+        return redirect(url_for('lista_compra_home'))
+    
+    return app
+        
 if __name__ == "__main__":
     app = create_app()
     app.run(debug=True)
