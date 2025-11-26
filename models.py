@@ -5,6 +5,11 @@ class Producto(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(100), nullable=False)
 
+class Marca(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(100), nullable=False)
+    sinonimos = db.Column(db.JSON, nullable=True)
+    embedding = db.Column(db.JSON, nullable=True)
 
 class Supermercado(db.Model):
     id = db.Column(db.Integer, primary_key=True)

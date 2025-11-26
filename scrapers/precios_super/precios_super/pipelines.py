@@ -6,7 +6,7 @@ ROOT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")
 sys.path.append(ROOT_PATH)
 
 from app import create_app, db
-from models import Producto, Supermercado, ProductoSupermercado, PrecioProducto
+from models import Producto, Supermercado, ProductoSupermercado, PrecioProducto, Marca
 from datetime import date
 
 class DBPipeline:
@@ -19,6 +19,31 @@ class DBPipeline:
         # Cache en memoria: nombre_super -> supermercado_id (INT, no el objeto)
         self.supermercados_cache = {}
 
+    def process_marca(self, text):
+        marca_aislada = not(" " in text and len(text.split(" ")) > 1)
+        if marca_aislada:
+            # comprobar si text es una marca existente en la db   
+            marca_existe = Marca.query.filter(Marca.sinonimos.contains([text])).first()
+            if marca_existe:
+                return text
+            # crear registro en la DB de nueva marca
+            new_marca = Marca(
+                nombre=text,
+                sinonimos=[text]
+            )
+            db.session.add(new_marca)
+            db.session.commit()
+            return text
+
+        for word in text.split(" "):
+            # comprobar si word es una marca existente en la db
+            marca_existe = Marca.query.filter(Marca.sinonimos.contains([word])).first()
+            if marca_existe:
+                return word
+            
+        # logear: No se encontro coincidencia con las marcas de la DB.
+        return None
+    
     def get_or_create_supermercado(self, nombre, url=None, ciudad=None):
         """
         Devuelve el ID de un Supermercado a partir del nombre.
@@ -76,13 +101,14 @@ class DBPipeline:
             ).first()
 
             if not prod_super:
+                marca = self.process_marca(item.get("marca"))
                 prod_super = ProductoSupermercado(
                     producto_id=producto.id,
                     supermercado_id=supermercado_id,
                     nombre_externo=item.get("nombre"),
                     codigo_externo=item.get("product_id"),
                     url=item.get("url"),
-                    marca=item.get("marca"),
+                    marca=marca,
                     cantidad=item.get("multiplicador")
                 )
                 db.session.add(prod_super)
