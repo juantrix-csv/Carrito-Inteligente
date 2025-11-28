@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from extensions import db 
 from utils import armar_listado_supermercados, calcular_super_mas_barato
 import json 
+
 def create_app():
     
     app = Flask(__name__)

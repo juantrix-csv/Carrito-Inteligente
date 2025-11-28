@@ -1,17 +1,53 @@
 import numpy as np
-from models import *
+from models import ListaCompra, ItemListaCompra, Supermercado, ProductoSupermercado, PrecioProducto, Producto, Marca
 from sentence_transformers import SentenceTransformer
 from unidades_medida import unidades_regex
 import re 
+import unicodedata
+from extensions import db
+import csv
+from pathlib import Path
+from datetime import datetime
 
 model = SentenceTransformer('all-MiniLM-L6-v2')
+RUTA_PENDIENTES = Path("pendientes_revision.csv")
 
-def embed(text: str) -> np.ndarray:
+def embed(text: str):
     vec = model.encode([text])[0].astype("float32")
     norm = np.linalg.norm(vec)
     if norm > 0:
         vec = vec / norm
-    return vec
+    return vec.tolist()
+
+def normalize_text(s: str) -> str:
+    s = s.lower().strip()
+    s = "".join(
+        c for c in unicodedata.normalize("NFD", s)
+        if unicodedata.category(c) != "Mn"
+    )
+    return " ".join(s.split())
+
+def generar_aliases_basicos(nombre_marca: str):
+    """
+    A partir de 'La Serenísima' genera variantes útiles:
+    - 'La Serenísima' (tal cual)
+    - versión normalizada sin acentos: 'la serenisima'
+    - sin artículo ('la', 'el', 'los', 'las'): 'serenisima'
+    """
+    aliases = set()
+
+    original = nombre_marca.strip()
+    aliases.add(original)
+
+    norm = normalize_text(original)          # la serenisima
+    aliases.add(norm)
+
+    palabras = norm.split()
+    if palabras and palabras[0] in {"la", "el", "los", "las"} and len(palabras) > 1:
+        # serenisima
+        aliases.add(" ".join(palabras[1:]))
+
+    return list(aliases)
 
 def armar_listado_supermercados(lista_id):
     lista = ListaCompra.query.get(lista_id)
@@ -202,5 +238,138 @@ def normalizar_producto_nombre(nombre):
         "intervencion": intervencion
     }
 
-x = 'Desodorante Fig & Suede Dove Men 150ml'
-print(normalizar_producto_nombre(x))
+
+
+def registrar_producto_pendiente(nombre_original: str, normalizado: dict, motivo: str = ""):
+    """
+    Guarda en un CSV los productos que requieren intervención humana.
+    - nombre_original: string tal como vino del scraper / input
+    - normalizado: dict devuelto por normalizar_producto_nombre
+    - motivo: texto opcional (ej: 'marca_no_detectada', 'baja_similitud', etc.)
+    """
+    RUTA_PENDIENTES = Path("pendientes_revision.csv")
+
+    # Definimos las columnas que queremos guardar
+    campos = [
+        "timestamp",
+        "nombre_original",
+        "producto",
+        "unidad_medida",
+        "valor",
+        "marca_detectada",
+        "intervencion",
+        "motivo",
+    ]
+
+    # ¿El archivo ya existe?
+    existe = RUTA_PENDIENTES.exists()
+
+    with RUTA_PENDIENTES.open("a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=campos)
+
+        # Si el archivo no existía, escribimos encabezado
+        if not existe:
+            writer.writeheader()
+
+        writer.writerow({
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "nombre_original": nombre_original,
+            "producto": normalizado.get("producto"),
+            "unidad_medida": normalizado.get("unidad_medida"),
+            "valor": normalizado.get("valor"),
+            "marca_detectada": normalizado.get("marca"),
+            "intervencion": normalizado.get("intervencion"),
+            "motivo": motivo,
+        })
+
+
+def revisar_intervenciones():
+    """
+    Revisa el CSV de pendientes y:
+      - Si se completó 'marca_detectada':
+          - Crea la marca si no existe (con embedding + aliases básicos).
+          - O, si existe, le agrega sinónimos.
+      - Si 'marca_detectada' sigue vacía, mantiene la fila en el CSV
+        para revisión futura.
+    """
+    if not RUTA_PENDIENTES.exists():
+        print("No existe pendientes_revision.csv, nada que revisar.")
+        return
+
+    filas_a_revisar = []
+    with RUTA_PENDIENTES.open("r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for fila in reader:
+            # Ignorar filas vacías como la última del ejemplo
+            if not any(fila.values()):
+                continue
+            filas_a_revisar.append(fila)
+
+    if not filas_a_revisar:
+        print("El CSV está vacío.")
+        return
+
+    filas_restantes = []
+
+    for fila in filas_a_revisar:
+        marca_detectada = (fila.get("marca_detectada") or "").strip()
+
+        # Si todavía no completaste la marca en esa fila → se mantiene
+        if not marca_detectada:
+            filas_restantes.append(fila)
+            continue
+
+        # Marca que completaste a mano (ej: "La Serenísima")
+        marca_canon = marca_detectada.strip()
+        marca_norm = normalize_text(marca_canon)
+
+        # ¿Ya existe esa marca en DB? (case-insensitive)
+        marca_existente = (
+            Marca.query
+            .filter(db.func.lower(Marca.nombre) == marca_norm)
+            .first()
+        )
+
+        aliases_nuevos = generar_aliases_basicos(marca_canon)
+
+        if not marca_existente:
+            # Crear nueva marca
+            emb = embed(marca_canon)
+
+            nueva_marca = Marca(
+                nombre=marca_canon,
+                sinonimos=aliases_nuevos,
+                embedding=emb
+            )
+            db.session.add(nueva_marca)
+            print(f"[NUEVA MARCA] '{marca_canon}' creada con aliases: {aliases_nuevos}")
+        else:
+            # Agregar sinónimos nuevos a la marca existente
+            sinonimos = marca_existente.sinonimos or []
+            existentes_norm = {normalize_text(s) for s in sinonimos}
+            nombre_canon_norm = normalize_text(marca_existente.nombre)
+
+            for alias in aliases_nuevos:
+                alias_norm = normalize_text(alias)
+                if alias_norm not in existentes_norm and alias_norm != nombre_canon_norm:
+                    sinonimos.append(alias)
+
+            marca_existente.sinonimos = sinonimos
+            print(f"[SINÓNIMOS] Marca '{marca_existente.nombre}' ahora tiene aliases: {sinonimos}")
+
+        # Esta fila ya fue usada para aprender la marca,
+        # no la guardamos en filas_restantes.
+
+    db.session.commit()
+
+    # Reescribimos el CSV solo con las filas que aún no tienen marca_detectada
+    with RUTA_PENDIENTES.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=filas_a_revisar[0].keys())
+        writer.writeheader()
+        for fila in filas_restantes:
+            writer.writerow(fila)
+
+    print("Revisión de intervenciones finalizada.")
+
+# x = 'Desodorante Fig & Suede Dove Men 150ml'
+# print(normalizar_producto_nombre(x))
