@@ -17,22 +17,19 @@ Carrito-Inteligente permite crear y administrar tu lista de la compra mensual y 
 
 Indica aquí las tecnologías usadas (ej. Node.js, React, Python, SQLite, Docker). Ejemplo:
 - Frontend: React / Vue / Svelte
-- Backend: Node.js (Express) / Flask / Django
-- Base de datos: SQLite / PostgreSQL
+- Backend:  Flask
+- Base de datos: SQLite
+- Scraping: Scrapy
 
 ## Instalación
 
 1. Clona el repositorio:
-    git clone <URL-del-repositorio>
-    cd <directorio-del-proyecto>
+    git clone "URL-del-repositorio"
+    cd "directorio-del-proyecto"
 
 2. Instala dependencias (ejemplos):
-    - Node.js:
-      npm install
-      npm run dev
     - Python:
       pip install -r requirements.txt
-      flask run
 
 3. Configura variables de entorno:
     - Crear un archivo .env con las claves necesarias (p. ej. DATABASE_URL, API_KEYS).
