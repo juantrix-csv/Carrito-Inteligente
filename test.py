@@ -1,7 +1,7 @@
 from app import create_app
 from extensions import db
 from models import Producto
-from utils import embed  # asegurate que exista
+from utils.utils import embed  # asegurate que exista
 
 app = create_app()
 

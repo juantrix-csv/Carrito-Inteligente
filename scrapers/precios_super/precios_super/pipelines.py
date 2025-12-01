@@ -4,7 +4,7 @@ import os
 ROOT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.append(ROOT_PATH)
 
-from utils import normalizar
+from utils.utils import normalizar
 from app import create_app, db
 from models import Producto, Supermercado, ProductoSupermercado, PrecioProducto, Marca
 from datetime import date
