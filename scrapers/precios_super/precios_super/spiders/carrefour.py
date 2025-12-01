@@ -2,7 +2,7 @@ import scrapy
 import json
 
 
-class CarrefourCategoriasSpider(scrapy.Spider): # TODO: revisar porque no recorre todos los productos de la pagina
+class CarrefourCategoriasSpider(scrapy.Spider):
     name = "carrefour"
     start_urls = [
         "https://www.carrefour.com.ar/api/catalog_system/pub/category/tree/3/"
@@ -10,7 +10,7 @@ class CarrefourCategoriasSpider(scrapy.Spider): # TODO: revisar porque no recorr
     custom_settings = {
         "LOG_LEVEL": "INFO",
     }
-    
+
     def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
             self.total_productos = 0

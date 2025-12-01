@@ -74,7 +74,7 @@ class DBPipeline:
         print(f"--------------------------- Usando supermercado: {supermercado.nombre} (ID: {supermercado_id})")
         return supermercado_id
 
-    def process_item(self, item, spider):
+    def process_item(self, item, spider): # TODO: cargar embedding de cada producto
         with self.app.app_context():
             # ---- SUPERMERCADO ----
             nombre_super = item.get("supermercado_nombre", "Carrefour")
