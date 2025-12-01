@@ -30,6 +30,10 @@ def create_app():
 
         return items, total
 
+    @app.route('/')
+    def home():
+        return redirect(url_for('lista_compra_home'))
+
     @app.route('/lista/')
     def lista_compra_home():
         listas = ListaCompra.query.order_by(ListaCompra.fecha_creacion.desc()).all()
