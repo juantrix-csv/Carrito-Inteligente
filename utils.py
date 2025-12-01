@@ -2,7 +2,7 @@ import numpy as np
 from models import ListaCompra, ItemListaCompra, Supermercado, ProductoSupermercado, PrecioProducto, Producto, Marca
 from sentence_transformers import SentenceTransformer
 from unidades_medida import unidades_regex
-import re 
+import re
 import unicodedata
 from extensions import db
 import csv
@@ -137,10 +137,10 @@ def detectar_unidad_medida(nombre: str):
             valor = match.group(0)
             return unidad_canonica, valor, False
         
-    return None, None, False
+    return None, None, True
 
 def detectar_marca(nombre):
-    nombre_lower = nombre.lower()
+    nombre_lower = quitar_acentos(nombre).lower()
     marcas = Marca.query.all()
 
     # 1) búsqueda exacta por marca
@@ -181,6 +181,10 @@ def detectar_marca(nombre):
     return None, True
 
 
+def quitar_acentos(s: str) -> str:
+    s = unicodedata.normalize("NFD", s)
+    return "".join(c for c in s if unicodedata.category(c) != "Mn")
+
 def limpiar_nombre_producto(nombre: str, unidad_medida: str, marca: str):
     """
     Limpia el nombre del producto utilizando regex:
@@ -188,9 +192,11 @@ def limpiar_nombre_producto(nombre: str, unidad_medida: str, marca: str):
       - Quita la marca detectada como palabra completa.
       - Quita caracteres especiales.
       - Normaliza espacios.
+      - eliminar acentos y pasar a minúsculas
     """
 
     nombre_limpio = nombre.lower()
+    nombre_limpio = quitar_acentos(nombre_limpio)
 
     # 1) Eliminar marca (como palabra completa o casi completa)
     if marca:
@@ -226,9 +232,14 @@ def normalizar_producto_nombre(nombre):
     marca, intervencion_marca = detectar_marca(nombre)
 
     # Si cualquiera de las dos pide intervención, lo marcamos
-    intervencion = intervencion_um or intervencion_marca
+    if intervencion_um:
+        print("Intervención requerida: unidad de medida no detectada o dudosa.")
+        intervencion = "unidad_medida_no_detectada_o_dudosa"
+    if intervencion_marca:
+        print("Intervención requerida: marca no detectada o dudosa.")
+        intervencion = "marca_no_detectada_o_dudosa"
 
-    producto = limpiar_nombre_producto(nombre, unidad_medida, marca)
+    producto = limpiar_nombre_producto(nombre, valor, marca)
 
     return {
         "producto": producto,
@@ -283,7 +294,7 @@ def registrar_producto_pendiente(nombre_original: str, normalizado: dict, motivo
         })
 
 
-def revisar_intervenciones():
+def revisar_intervenciones(): # TODO: revisar comportamiento con unidades de medida
     """
     Revisa el CSV de pendientes y:
       - Si se completó 'marca_detectada':
@@ -292,38 +303,55 @@ def revisar_intervenciones():
       - Si 'marca_detectada' sigue vacía, mantiene la fila en el CSV
         para revisión futura.
     """
+    print("=== INICIANDO revisión de intervenciones ===")
+
     if not RUTA_PENDIENTES.exists():
-        print("No existe pendientes_revision.csv, nada que revisar.")
+        print("[ERROR] No existe pendientes_revision.csv")
         return
 
     filas_a_revisar = []
     with RUTA_PENDIENTES.open("r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for fila in reader:
-            # Ignorar filas vacías como la última del ejemplo
             if not any(fila.values()):
+                print("[SKIP] Fila vacía encontrada, ignorando")
                 continue
             filas_a_revisar.append(fila)
 
     if not filas_a_revisar:
-        print("El CSV está vacío.")
+        print("[INFO] El CSV está vacío, no hay nada para procesar.")
         return
+
+    print(f"[INFO] {len(filas_a_revisar)} filas cargadas desde el CSV.")
 
     filas_restantes = []
 
-    for fila in filas_a_revisar:
+    for idx, fila in enumerate(filas_a_revisar, start=1):
+        print(f"\n--- Procesando fila #{idx} ---")
+        print(f"Nombre original: {fila.get('nombre_original')}")
+        print(f"Marca detectada (manual): {fila.get('marca_detectada')}")
+
         marca_detectada = (fila.get("marca_detectada") or "").strip()
 
-        # Si todavía no completaste la marca en esa fila → se mantiene
+        # Si sigue sin completarse → conservar en archivo
         if not marca_detectada:
-            filas_restantes.append(fila)
-            continue
+            nombre_original = fila.get("nombre_original") or ""
+            auto_marca, auto_interv = detectar_marca(nombre_original)
 
-        # Marca que completaste a mano (ej: "La Serenísima")
+            if auto_marca and not auto_interv:
+                print(f"[AUTO] Marca '{auto_marca}' detectada automáticamente desde la DB. Fila resuelta.")
+                # No la agrego a filas_restantes → desaparece del CSV
+                continue
+            else:
+                print("[PENDIENTE] No se pudo detectar automáticamente, la fila se mantiene en el CSV.")
+                filas_restantes.append(fila)
+                continue
+
         marca_canon = marca_detectada.strip()
         marca_norm = normalize_text(marca_canon)
+        print(f"[INFO] Marca canonical normalizada: '{marca_norm}'")
 
-        # ¿Ya existe esa marca en DB? (case-insensitive)
+        # Buscar si ya existe en DB
         marca_existente = (
             Marca.query
             .filter(db.func.lower(Marca.nombre) == marca_norm)
@@ -331,10 +359,13 @@ def revisar_intervenciones():
         )
 
         aliases_nuevos = generar_aliases_basicos(marca_canon)
+        print(f"[INFO] Aliases generados: {aliases_nuevos}")
 
         if not marca_existente:
-            # Crear nueva marca
+            print(f"[CREAR] La marca '{marca_canon}' NO existe en la DB. Creando...")
+
             emb = embed(marca_canon)
+            print(f"[EMBED] Tamaño del embedding generado: {len(emb)} valores.")
 
             nueva_marca = Marca(
                 nombre=marca_canon,
@@ -342,34 +373,60 @@ def revisar_intervenciones():
                 embedding=emb
             )
             db.session.add(nueva_marca)
-            print(f"[NUEVA MARCA] '{marca_canon}' creada con aliases: {aliases_nuevos}")
+            print(f"[OK] Marca '{marca_canon}' creada con éxito.")
         else:
-            # Agregar sinónimos nuevos a la marca existente
+            print(f"[EXISTE] La marca '{marca_existente.nombre}' ya está en la DB.")
+            print("[INFO] Sus aliases actuales son:", marca_existente.sinonimos)
+
             sinonimos = marca_existente.sinonimos or []
             existentes_norm = {normalize_text(s) for s in sinonimos}
             nombre_canon_norm = normalize_text(marca_existente.nombre)
+
+            agregados = []
 
             for alias in aliases_nuevos:
                 alias_norm = normalize_text(alias)
                 if alias_norm not in existentes_norm and alias_norm != nombre_canon_norm:
                     sinonimos.append(alias)
+                    agregados.append(alias)
 
             marca_existente.sinonimos = sinonimos
-            print(f"[SINÓNIMOS] Marca '{marca_existente.nombre}' ahora tiene aliases: {sinonimos}")
 
-        # Esta fila ya fue usada para aprender la marca,
-        # no la guardamos en filas_restantes.
+            if agregados:
+                print(f"[UPDATE] Se agregaron nuevos alias: {agregados}")
+            else:
+                print("[INFO] No había aliases nuevos para agregar.")
+
+        # Fin del procesamiento de la fila
+        print("[OK] Fila procesada y no se incluirá nuevamente en el CSV.")
+        
 
     db.session.commit()
+    print("\n=== Cambios confirmados en la base de datos ===")
 
-    # Reescribimos el CSV solo con las filas que aún no tienen marca_detectada
+    # Reescribir CSV con las filas que siguen pendientes
     with RUTA_PENDIENTES.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=filas_a_revisar[0].keys())
         writer.writeheader()
         for fila in filas_restantes:
             writer.writerow(fila)
 
-    print("Revisión de intervenciones finalizada.")
+    print(f"[INFO] {len(filas_restantes)} filas se mantienen pendientes.")
+    print("=== Revisión de intervenciones finalizada ===")
+
+
+def normalizar(text):
+    '''
+    Ejecuta la normalización completa de un texto de producto.
+    '''
+    revisar_intervenciones()
+    resultado = normalizar_producto_nombre(text)
+    if resultado["intervencion"]:
+        registrar_producto_pendiente(text, resultado, motivo="marca_no_detectada_o_dudosa")
+        print(f"Producto '{text}' requiere intervención humana.")
+
+    print(f"Normalización completa de '{text}': {resultado}")
+    pass
 
 # x = 'Desodorante Fig & Suede Dove Men 150ml'
 # print(normalizar_producto_nombre(x))

@@ -1,10 +1,10 @@
 import sys
 import os
-
 # ruta a la raíz del proyecto
 ROOT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.append(ROOT_PATH)
 
+from utils import normalizar
 from app import create_app, db
 from models import Producto, Supermercado, ProductoSupermercado, PrecioProducto, Marca
 from datetime import date
@@ -92,7 +92,7 @@ class DBPipeline:
                 producto = Producto(nombre=item["nombre"])
                 db.session.add(producto)
                 db.session.flush()
-            print(f"Procesando producto: {producto.nombre} (ID: {producto.id})")
+            print(f"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX   Procesando producto: {producto.nombre} (ID: {producto.id})")
 
             # ---- PRODUCTO x SUPERMERCADO ----
             prod_super = ProductoSupermercado.query.filter_by(
@@ -141,6 +141,9 @@ class DBPipeline:
                         f"ProductoSupermercado ID: {prod_super.id} "
                         f"en {date.today()} ({nombre_super})"
                     )
+
+            # ---- normalizar y commit ----
+            normalizar(item["nombre"])
 
             db.session.commit()
 
