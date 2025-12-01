@@ -4,6 +4,7 @@ from datetime import date
 class Producto(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(100), nullable=False)
+    embedding = db.Column(db.JSON, nullable=True)
 
 class Marca(db.Model):
     id = db.Column(db.Integer, primary_key=True)

@@ -42,6 +42,7 @@ class DBPipeline:
                 return word
             
         # logear: No se encontro coincidencia con las marcas de la DB.
+        print(f"[WARN] No se encontro coincidencia de marca para: {text}")
         return None
     
     def get_or_create_supermercado(self, nombre, url=None, ciudad=None):
@@ -143,8 +144,9 @@ class DBPipeline:
                     )
 
             # ---- normalizar y commit ----
-            normalizar(item["nombre"])
+            # normalizar(item["nombre"])
 
             db.session.commit()
 
         return item
+

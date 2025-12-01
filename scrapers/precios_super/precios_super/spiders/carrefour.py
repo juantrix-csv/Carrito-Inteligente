@@ -2,11 +2,18 @@ import scrapy
 import json
 
 
-class CarrefourCategoriasSpider(scrapy.Spider):
+class CarrefourCategoriasSpider(scrapy.Spider): # TODO: revisar porque no recorre todos los productos de la pagina
     name = "carrefour"
     start_urls = [
         "https://www.carrefour.com.ar/api/catalog_system/pub/category/tree/3/"
     ]
+    custom_settings = {
+        "LOG_LEVEL": "INFO",
+    }
+    
+    def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.total_productos = 0
 
     def extraer_productos_categoria(self, data):
         """
@@ -88,15 +95,55 @@ class CarrefourCategoriasSpider(scrapy.Spider):
         for nodo in data:
             recorrer_nodo(nodo)
 
+        self.logger.info(f"Encontradas {len(categorias)} categorías")
+
         for categoria in categorias:
-            yield scrapy.Request("https://www.carrefour.com.ar/api/catalog_system/pub/products/search/" + categoria, callback=self.parse_categoria)
+            url = (
+                f"https://www.carrefour.com.ar/api/catalog_system/pub/products/search/"
+                f"{categoria}?_from=0&_to=49"
+            )
+            yield scrapy.Request(
+                url,
+                callback=self.parse_categoria,
+                meta={"categoria_slug": categoria, "desde": 0, "hasta": 49}
+            )
         
     def parse_categoria(self, response):
-        data = json.loads(response.text)
-        productos = self.extraer_productos_categoria(data)
-        for p in productos:
-            yield p  # Así se envía a la pipeline
+        categoria_slug = response.meta["categoria_slug"]
+        desde = response.meta["desde"]
+        hasta = response.meta["hasta"]
 
+        data = json.loads(response.text)
+        self.logger.info(f"[{categoria_slug}] {len(data)} productos en rango {desde}-{hasta}")
+        productos = self.extraer_productos_categoria(data)
+        self.total_productos += len(productos)
+
+        for p in productos:
+            yield p
+
+        # Si devolvió productos, intento pedir la siguiente "página"
+        if data:
+            siguiente_desde = hasta + 1
+            siguiente_hasta = hasta + 50  # mismo tamaño de ventana
+            next_url = (
+                f"https://www.carrefour.com.ar/api/catalog_system/pub/products/search/"
+                f"{categoria_slug}?_from={siguiente_desde}&_to={siguiente_hasta}"
+            )
+
+            self.logger.info(f"[{categoria_slug}] siguiente página {siguiente_desde}-{siguiente_hasta}")
+            yield scrapy.Request(
+                next_url,
+                callback=self.parse_categoria,
+                meta={
+                    "categoria_slug": categoria_slug,
+                    "desde": siguiente_desde,
+                    "hasta": siguiente_hasta,
+                }
+            )
+
+        self.logger.info(
+            f"[{categoria_slug}] acumulado total_productos = {self.total_productos}"
+        )
 
 
             

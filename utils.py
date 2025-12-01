@@ -13,6 +13,10 @@ model = SentenceTransformer('all-MiniLM-L6-v2')
 RUTA_PENDIENTES = Path("pendientes_revision.csv")
 
 def embed(text: str):
+    """
+    Genera un embedding normalizado para el texto dado.
+    Retorna una lista de floats.
+    """
     vec = model.encode([text])[0].astype("float32")
     norm = np.linalg.norm(vec)
     if norm > 0:
@@ -20,6 +24,12 @@ def embed(text: str):
     return vec.tolist()
 
 def normalize_text(s: str) -> str:
+    """
+    Normaliza un string para comparaciones:
+    - pasa a minúsculas
+    - quita acentos
+    - normaliza espacios
+    """
     s = s.lower().strip()
     s = "".join(
         c for c in unicodedata.normalize("NFD", s)
@@ -50,6 +60,10 @@ def generar_aliases_basicos(nombre_marca: str):
     return list(aliases)
 
 def armar_listado_supermercados(lista_id):
+    """
+    Dada una lista de compra, arma una estructura con todos los supermercados
+    y los items de la lista que tienen en stock, con su precio más barato. 
+    """
     lista = ListaCompra.query.get(lista_id)
 
     if not lista:
@@ -140,6 +154,9 @@ def detectar_unidad_medida(nombre: str):
     return None, None, True
 
 def detectar_marca(nombre):
+    """
+    Detecta la marca en el nombre del producto.
+    """
     nombre_lower = quitar_acentos(nombre).lower()
     marcas = Marca.query.all()
 
@@ -182,6 +199,9 @@ def detectar_marca(nombre):
 
 
 def quitar_acentos(s: str) -> str:
+    """
+    Quita los acentos de un string.
+    """
     s = unicodedata.normalize("NFD", s)
     return "".join(c for c in s if unicodedata.category(c) != "Mn")
 
@@ -226,6 +246,9 @@ def limpiar_nombre_producto(nombre: str, unidad_medida: str, marca: str):
 
 
 def normalizar_producto_nombre(nombre):
+    """
+    Normaliza el nombre del producto, detectando unidad de medida y marca.
+    """
     intervencion = False 
 
     unidad_medida, valor, intervencion_um = detectar_unidad_medida(nombre)
