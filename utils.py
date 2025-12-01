@@ -323,7 +323,7 @@ def revisar_intervenciones(): # TODO: revisar comportamiento con unidades de med
       - Si se completó 'marca_detectada':
           - Crea la marca si no existe (con embedding + aliases básicos).
           - O, si existe, le agrega sinónimos.
-      - Si 'marca_detectada' sigue vacía, mantiene la fila en el CSV
+      - Si 'marca_detectada' o la unidad de medida y el valor siguen vacía, mantiene la fila en el CSV
         para revisión futura.
     """
     print("=== INICIANDO revisión de intervenciones ===")
@@ -355,6 +355,14 @@ def revisar_intervenciones(): # TODO: revisar comportamiento con unidades de med
         print(f"Marca detectada (manual): {fila.get('marca_detectada')}")
 
         marca_detectada = (fila.get("marca_detectada") or "").strip()
+        unidad_detectada = (fila.get("unidad_medida") or "").strip()
+        valor_detectado = (fila.get("valor") or "").strip()
+
+        # 🔥 Nueva condición: si falta algo → conservar fila
+        if not (marca_detectada and unidad_detectada and valor_detectado):
+            print("[PENDIENTE] Faltan datos obligatorios (marca / unidad / valor). La fila queda en el CSV.")
+            filas_restantes.append(fila)
+            continue
 
         # Si sigue sin completarse → conservar en archivo
         if not marca_detectada:
