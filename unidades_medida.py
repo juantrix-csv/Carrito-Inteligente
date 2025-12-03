@@ -29,9 +29,5 @@ unidades_regex = {
     "unidad": re.compile(
         r"\b(\d+)\s*(u\.?|unidades?|unit[s]?)\b",
         re.IGNORECASE
-    ),
-    "pack": re.compile(
-        r"\b(\d+)\s*(pack|packs|paquetes?)\b",
-        re.IGNORECASE
-    ),
+    )
 }
