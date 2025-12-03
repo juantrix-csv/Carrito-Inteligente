@@ -1,5 +1,5 @@
 import numpy as np
-from models import Producto
+from models import Marca, Producto
 from . import model
 
 def embed(text: str):
@@ -31,14 +31,18 @@ def cosine_similarity(vec1, vec2):
     
     return dot_product / (norm1 * norm2)
 
-def encontrar_producto_por_nombre_semantico(nombre, marca):
+def encontrar_producto_por_nombre_semantico(nombre, marca=None):
     """
     Busca un producto en la base de datos cuyo nombre sea semánticamente similar al dado.
     Filtrando por los productos de la misma marca.
     Retorna el primer producto encontrado o None si no hay coincidencias.
     """
     embedding_nombre = embed(nombre)
-    productos = Producto.query.filter_by(marca=marca).all()
+    productos = Producto.query.filter_by(
+        marca_id=Marca.query.filter_by(
+            nombre=marca
+        ).first().id if marca else None
+    ).all()
 
     mejor_producto = None
     mejor_similitud = -1.0
