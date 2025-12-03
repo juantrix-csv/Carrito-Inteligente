@@ -4,7 +4,7 @@ import os
 ROOT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.append(ROOT_PATH)
 
-from utils.embedding import encontrar_producto_por_nombre_semantico
+from utils.embedding import embed, encontrar_producto_por_nombre_semantico
 from utils.normalizar import normalizar
 from app import create_app, db
 from models import Producto, Supermercado, ProductoSupermercado, PrecioProducto, Marca
@@ -111,7 +111,13 @@ class DBPipeline:
             # producto = Producto.query.filter_by(nombre=item["nombre"]).first()
             producto, sim = encontrar_producto_por_nombre_semantico(item["nombre"], item.get("marca"))
             if not producto or sim < 0.85:
-                producto = Producto(nombre=item["nombre"])
+                producto = Producto(
+                    nombre=item["nombre"],
+                    embedding=embed(item["nombre"]),
+                    marca=item.get("marca"),
+                    unidad_medida=item.get("unidad"),
+                    valor_medida=item.get("multiplicador")
+                )
                 db.session.add(producto)
                 db.session.flush()
             print(f"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX   Procesando producto: {producto.nombre} (ID: {producto.id})")

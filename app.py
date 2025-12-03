@@ -55,7 +55,7 @@ def create_app():
             total_estimado=total
         )
     
-    @app.route('/lista/<int:lista_id>/comparar') # TODO: asegurar de usar comparacion de embeddings
+    @app.route('/lista/<int:lista_id>/comparar') 
     def comparar_lista(lista_id):
         # Obtenemos la lista
         lista = ListaCompra.query.get_or_404(lista_id)
