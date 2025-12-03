@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
 from extensions import db 
-from utils.utils import armar_listado_supermercados, calcular_super_mas_barato
+from utils.supermercado import armar_listado_supermercados, calcular_super_mas_barato
 import json 
 
 def create_app():
