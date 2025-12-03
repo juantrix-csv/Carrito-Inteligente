@@ -1,3 +1,4 @@
+from enum import Enum
 from extensions import db 
 from datetime import date
 
@@ -5,6 +6,9 @@ class Producto(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(100), nullable=False)
     embedding = db.Column(db.JSON, nullable=True)
+    marca = db.Column(db.String(100), nullable=True)
+    unidad_medida = db.Column(Enum("kg", "litro", "unidad", "gramo", "mililitro"), nullable=True)
+    valor_medida = db.Column(db.Float, nullable=True)
 
 class Marca(db.Model):
     id = db.Column(db.Integer, primary_key=True)
