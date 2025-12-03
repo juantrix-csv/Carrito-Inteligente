@@ -4,6 +4,7 @@ import os
 ROOT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.append(ROOT_PATH)
 
+from utils.embedding import encontrar_producto_por_nombre_semantico
 from utils.normalizar import normalizar
 from app import create_app, db
 from models import Producto, Supermercado, ProductoSupermercado, PrecioProducto, Marca
@@ -20,6 +21,13 @@ class DBPipeline:
         self.supermercados_cache = {}
 
     def process_marca(self, text):
+        """
+        Procesa el nombre de una marca.
+        Si la marca ya existe en la DB (incluso como sinónimo), devuelve el
+        nombre de la marca existente.
+        Si no existe, crea un nuevo registro de Marca y devuelve su nombre.
+        Si no se puede determinar una marca válida, devuelve None.
+        """
         marca_aislada = not(" " in text and len(text.split(" ")) > 1)
         if marca_aislada:
             # comprobar si text es una marca existente en la db   
@@ -75,11 +83,23 @@ class DBPipeline:
         return supermercado_id
 
     def process_item(self, item, spider): # TODO: cargar embedding de cada producto
+        """
+        Procesa un item extraído por un spider.
+        Guarda/actualiza la información en la base de datos.
+        Retorna el item procesado.
+        """
         with self.app.app_context():
             # ---- SUPERMERCADO ----
-            nombre_super = item.get("supermercado_nombre", "Carrefour")
-            url_super = item.get("supermercado_url", "https://www.carrefour.com.ar")
-            ciudad_super = item.get("supermercado_ciudad")  # puede ser None
+            nombre_super = item.get("supermercado_nombre", None)
+            url_super = item.get("supermercado_url", None)
+            ciudad_super = item.get("supermercado_ciudad", None)  # puede ser None
+
+            if not nombre_super:
+                print("[ERROR] El item no tiene 'supermercado_nombre'. No se puede procesar.")
+                return item
+            if not url_super:
+                print("[ERROR] El item no tiene 'supermercado_url'. No se puede procesar.")
+                return item
 
             supermercado_id = self.get_or_create_supermercado(
                 nombre=nombre_super,
@@ -88,8 +108,9 @@ class DBPipeline:
             )
 
             # ---- PRODUCTO ----
-            producto = Producto.query.filter_by(nombre=item["nombre"]).first()
-            if not producto:
+            # producto = Producto.query.filter_by(nombre=item["nombre"]).first()
+            producto, sim = encontrar_producto_por_nombre_semantico(item["nombre"], item.get("marca"))
+            if not producto or sim < 0.85:
                 producto = Producto(nombre=item["nombre"])
                 db.session.add(producto)
                 db.session.flush()

@@ -1,3 +1,4 @@
+import numpy as np
 from models import Producto
 from . import model
 
@@ -30,26 +31,24 @@ def cosine_similarity(vec1, vec2):
     
     return dot_product / (norm1 * norm2)
 
-def encontrar_producto_por_nombre_semantico(nombre):
+def encontrar_producto_por_nombre_semantico(nombre, marca):
     """
     Busca un producto en la base de datos cuyo nombre sea semánticamente similar al dado.
+    Filtrando por los productos de la misma marca.
     Retorna el primer producto encontrado o None si no hay coincidencias.
     """
     embedding_nombre = embed(nombre)
-    productos = Producto.query.all()
-    
+    productos = Producto.query.filter_by(marca=marca).all()
+
     mejor_producto = None
-    mejor_similitud = -1.0  
-    
+    mejor_similitud = -1.0
+
     for producto in productos:
-        similitud = cosine_similarity(embedding_nombre, producto.nombre_embedding)
-        if similitud > mejor_similitud:
-            mejor_similitud = similitud
-            mejor_producto = producto
+        if producto.embedding:
+            similitud = cosine_similarity(embedding_nombre, producto.embedding)
+            if similitud > mejor_similitud:
+                mejor_similitud = similitud
+                mejor_producto = producto
+
+    return mejor_producto, mejor_similitud
     
-    # Umbral de similitud para considerar una coincidencia válida
-    UMBRAL_SIMILITUD = 0.8
-    if mejor_similitud >= UMBRAL_SIMILITUD:
-        return mejor_producto
-    else:
-        return None
