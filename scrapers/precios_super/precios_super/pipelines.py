@@ -20,7 +20,10 @@ class DBPipeline:
         # Cache en memoria: nombre_super -> supermercado_id (INT, no el objeto)
         self.supermercados_cache = {}
 
-    def process_marca(self, text):
+    def process_unit_value(self, text): # TODO implementar para normalizar unidades y valores
+        pass
+
+    def process_marca(self, text): # TODO: mejorar esta funcion con embeddings
         """
         Procesa el nombre de una marca.
         Si la marca ya existe en la DB (incluso como sinónimo), devuelve el
@@ -82,7 +85,7 @@ class DBPipeline:
         print(f"--------------------------- Usando supermercado: {supermercado.nombre} (ID: {supermercado_id})")
         return supermercado_id
 
-    def process_item(self, item, spider): # TODO: cargar embedding de cada producto
+    def process_item(self, item, spider):
         """
         Procesa un item extraído por un spider.
         Guarda/actualiza la información en la base de datos.
@@ -109,12 +112,13 @@ class DBPipeline:
 
             # ---- PRODUCTO ----
             # producto = Producto.query.filter_by(nombre=item["nombre"]).first()
-            producto, sim = encontrar_producto_por_nombre_semantico(item["nombre"], item.get("marca"))
+            marca = self.process_marca(item.get("marca"))
+            producto, sim = encontrar_producto_por_nombre_semantico(item["nombre"], marca)
             if not producto or sim < 0.85:
                 producto = Producto(
                     nombre=item["nombre"],
                     embedding=embed(item["nombre"]),
-                    marca=item.get("marca"),
+                    marca_id=Marca.query.filter_by(nombre=marca).first().id if marca else None,
                     unidad_medida=item.get("unidad"),
                     valor_medida=item.get("multiplicador")
                 )
@@ -129,7 +133,6 @@ class DBPipeline:
             ).first()
 
             if not prod_super:
-                marca = self.process_marca(item.get("marca"))
                 prod_super = ProductoSupermercado(
                     producto_id=producto.id,
                     supermercado_id=supermercado_id,
